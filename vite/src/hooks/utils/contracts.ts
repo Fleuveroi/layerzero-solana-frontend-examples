@@ -1,12 +1,19 @@
 import { useMemo } from "react";
 import { publicKey } from "@metaplex-foundation/umi";
+import type { PublicKey as UmiPublicKey } from "@metaplex-foundation/umi";
 import { PublicKey } from "@solana/web3.js";
 import { CONTRACTS } from "../../config/contracts";
 
 /**
  * Stable Solana contract values using UMI PublicKey format
  */
-export function useStableSolanaContracts() {
+export type SolanaContracts = {
+  mint: UmiPublicKey;
+  storePda: UmiPublicKey;
+  programId: UmiPublicKey;
+};
+
+export function useStableSolanaContracts(): SolanaContracts {
   return useMemo(() => {
     return {
       mint: publicKey(CONTRACTS.SOLANA_OFT_MINT_ADDRESS),

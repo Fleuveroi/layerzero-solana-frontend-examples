@@ -2,7 +2,7 @@ import { useEvmToSolana } from '../../../hooks/useEvmToSolana'
 import { MessageStatusDisplay } from '../../MessageStatusDisplay'
 import { FilePathDisplay } from '../../FilePathDisplay'
 
-export default function EvmToSolanaCard({ networkName, isWrongNetwork }: { networkName: string, isWrongNetwork: boolean }) {
+export default function EvmToSolanaCard({ networkName, isWrongNetwork, oftAddressOverride, rpcUrl }: { networkName: string, isWrongNetwork: boolean, oftAddressOverride?: `0x${string}` | string, rpcUrl?: string }) {
   
   const {
     isConnected,
@@ -20,7 +20,7 @@ export default function EvmToSolanaCard({ networkName, isWrongNetwork }: { netwo
     getQuote,
     handleSwitchNetwork,
     sendTokens,
-  } = useEvmToSolana()
+  } = useEvmToSolana(oftAddressOverride, rpcUrl)
 
   if (!isConnected) {
     return (

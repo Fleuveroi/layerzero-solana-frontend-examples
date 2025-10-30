@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { EndpointId } from "@layerzerolabs/lz-definitions";
-import { publicKey, transactionBuilder } from "@metaplex-foundation/umi";
+import { publicKey } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import { walletAdapterIdentity } from "@metaplex-foundation/umi-signer-wallet-adapters";
 import { addressToBytes32 } from "@layerzerolabs/lz-v2-utilities";
@@ -20,7 +19,6 @@ const amount = 0.1 * LAMPORTS_PER_SOL;
 const SOLANA_ESCROW_ADDRESS = process.env.NEXT_PUBLIC_SOLANA_ESCROW_ADDRESS;
 const SOLANA_PROGRAM_ADDRESS = process.env.NEXT_PUBLIC_SOLANA_PROGRAM_ADDRESS;
 
-const fromEid = EndpointId.SOLANA_V2_TESTNET;
 const toEid = EndpointId.SEPOLIA_V2_TESTNET;
 
 export const SolanaToEvmCard = () => {

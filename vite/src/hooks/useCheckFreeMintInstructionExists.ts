@@ -7,7 +7,11 @@ import { useStableSolanaContractsWeb3, useWalletReady } from './utils';
 import oftIdl from "../vm-artifacts/solana/idl/oft.json";
 import type Oft from "../vm-artifacts/solana/idl/oft.json";
 
-export function useCheckFreeMintInstructionExists() {
+export function useCheckFreeMintInstructionExists(contractOverride?: {
+  tokenMint: PublicKey | null;
+  programId: PublicKey | null;
+  oftStore: PublicKey | null;
+}) {
   const wallet = useWallet();
   const { connection } = useConnection();
   const [isMintTokenInstructionAvailable, setIsMintTokenInstructionAvailable] = useState<boolean | null>(null);
@@ -15,7 +19,8 @@ export function useCheckFreeMintInstructionExists() {
   
   // Use utility hooks
   const walletReady = useWalletReady();
-  const contractValues = useStableSolanaContractsWeb3();
+  const stableContracts = useStableSolanaContractsWeb3();
+  const contractValues = contractOverride ?? stableContracts;
 
   // ------------------------------------------------------------
   // Anchor helpers
@@ -84,7 +89,7 @@ export function useCheckFreeMintInstructionExists() {
           
           const [dailyMintLimit] = PublicKey.findProgramAddressSync(
             [Buffer.from("DailyMintLimit"), wallet.publicKey!.toBuffer()],
-            contractValues.programId
+            program.programId
           );
 
           // Try to build the instruction (this will throw if method signature is wrong)

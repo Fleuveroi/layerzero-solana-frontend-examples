@@ -16,7 +16,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@solana/web3.js": "^1.98.0"
+      "@solana/web3.js": "^1.98.0",
+      "@solana/wallet-adapter-base": "^0.9.23"
     }
   },
   "dependencies": {

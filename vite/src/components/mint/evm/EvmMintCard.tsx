@@ -1,7 +1,7 @@
 import { useEvmOft } from '../../../hooks/useEvmOft'
 import { FilePathDisplay } from '../../FilePathDisplay'
 
-export default function EvmMintCard({ networkName, isWrongNetwork }: { networkName: string, isWrongNetwork: boolean }) {
+export default function EvmMintCard({ networkName, isWrongNetwork, canMint = true, oftAddressOverride, rpcUrl }: { networkName: string, isWrongNetwork: boolean, canMint?: boolean, oftAddressOverride?: `0x${string}` | string, rpcUrl?: string }) {
   const {
     isConnected,
     isPending,
@@ -11,7 +11,7 @@ export default function EvmMintCard({ networkName, isWrongNetwork }: { networkNa
     handleMint,
     handleSwitchNetwork,
     formattedBalance,
-  } = useEvmOft()
+  } = useEvmOft(oftAddressOverride, rpcUrl)
 
   return (
     <div className="space-y-4">
@@ -60,17 +60,19 @@ export default function EvmMintCard({ networkName, isWrongNetwork }: { networkNa
               </p>
             </div>
 
-            {/* Mint functionality - Only when wallet connected */}
-            <button
-              onClick={handleMint}
-              disabled={isWrongNetwork || isPending || isConfirming}
-              className="w-full lz-button disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isWrongNetwork ? `Switch to ${networkName}` : 
-               isPending ? 'Confirming...' : 
-               isConfirming ? 'Minting...' : 
-               'Mint 1 OFT token'}
-            </button>
+            {/* Mint functionality - Only when wallet connected and minting enabled */}
+            {canMint && (
+              <button
+                onClick={handleMint}
+                disabled={isWrongNetwork || isPending || isConfirming}
+                className="w-full lz-button disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isWrongNetwork ? `Switch to ${networkName}` : 
+                 isPending ? 'Confirming...' : 
+                 isConfirming ? 'Minting...' : 
+                 'Mint 1 OFT token'}
+              </button>
+            )}
 
             {isConfirmed && !isWrongNetwork && (
               <div className="p-3 bg-layerzero-gray-800 border border-green-400 rounded-none">

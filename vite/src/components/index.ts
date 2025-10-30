@@ -15,3 +15,6 @@ export { MessageStatusDisplay } from './MessageStatusDisplay';
 
 // Utility components
 export { FilePathDisplay } from './FilePathDisplay';
+
+// Configure components
+export * from './configure';

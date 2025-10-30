@@ -7,9 +7,11 @@ import { myOftMockAbi } from '../vm-artifacts/evm/MyOFTMock'
 import { oftAddress } from './useEvmOft'
 import { useEvmBase } from './utils'
 import { readContract } from 'wagmi/actions'
+import { createPublicClient, http } from 'viem'
+import { readContract as viemReadContract } from 'viem/actions'
 import { wagmiConfig } from '../config/wagmi'
 
-export function useEvmToSolana() {
+export function useEvmToSolana(overrideOftAddress?: `0x${string}` | string, rpcUrl?: string) {
   const evmBase = useEvmBase()
   const { address, isConnected, chainId, hash, isPending, isConfirming, isConfirmed, error, writeContract, handleSwitchNetwork, handleError, isCorrectNetwork } = evmBase
   const wallet = useWallet()
@@ -26,6 +28,11 @@ export function useEvmToSolana() {
       setRecipientAddress(wallet.publicKey.toString())
     }
   }, [wallet.connected, wallet.publicKey])
+
+  // Select OFT address: override if valid, else default
+  const selectedOftAddress = (typeof overrideOftAddress === 'string' && overrideOftAddress.startsWith('0x') && overrideOftAddress.length === 42
+    ? (overrideOftAddress as `0x${string}`)
+    : oftAddress)
 
   // Get quote for sending
   const getQuote = useCallback(async () => {
@@ -45,19 +52,30 @@ export function useEvmToSolana() {
         composeMsg: '0x' as string as `0x${string}`,
         oftCmd: '0x' as string as `0x${string}`,
       }
-      const msgFee = await readContract(wagmiConfig, {
-        address: oftAddress,
-        abi: myOftMockAbi,
-        functionName: 'quoteSend',
-        args: [sendParam, false],
-      }) as { nativeFee: bigint; lzTokenFee: bigint }
+      let msgFee: { nativeFee: bigint; lzTokenFee: bigint }
+      if (rpcUrl) {
+        const client = createPublicClient({ transport: http(rpcUrl) })
+        msgFee = await viemReadContract(client, {
+          address: selectedOftAddress,
+          abi: myOftMockAbi,
+          functionName: 'quoteSend',
+          args: [sendParam, false],
+        }) as { nativeFee: bigint; lzTokenFee: bigint }
+      } else {
+        msgFee = await readContract(wagmiConfig, {
+          address: selectedOftAddress,
+          abi: myOftMockAbi,
+          functionName: 'quoteSend',
+          args: [sendParam, false],
+        }) as { nativeFee: bigint; lzTokenFee: bigint }
+      }
       setQuoteFee(BigInt(msgFee.nativeFee))
     } catch (error) {
       handleError(error, 'Failed to get quote')
     } finally {
       setIsQuoting(false)
     }
-  }, [amount, recipientAddress, evmBase, handleError])
+  }, [amount, recipientAddress, evmBase, handleError, rpcUrl, selectedOftAddress])
 
 
 
@@ -84,12 +102,23 @@ export function useEvmToSolana() {
             composeMsg: '0x' as string as `0x${string}`,
             oftCmd: '0x' as string as `0x${string}`,
           }
-          const msgFee = await readContract(wagmiConfig, {
-            address: oftAddress,
-            abi: myOftMockAbi,
-            functionName: 'quoteSend',
-            args: [sendParam, false],
-          }) as { nativeFee: bigint; lzTokenFee: bigint }
+          let msgFee: { nativeFee: bigint; lzTokenFee: bigint }
+          if (rpcUrl) {
+            const client = createPublicClient({ transport: http(rpcUrl) })
+            msgFee = await viemReadContract(client, {
+              address: selectedOftAddress,
+              abi: myOftMockAbi,
+              functionName: 'quoteSend',
+              args: [sendParam, false],
+            }) as { nativeFee: bigint; lzTokenFee: bigint }
+          } else {
+            msgFee = await readContract(wagmiConfig, {
+              address: selectedOftAddress,
+              abi: myOftMockAbi,
+              functionName: 'quoteSend',
+              args: [sendParam, false],
+            }) as { nativeFee: bigint; lzTokenFee: bigint }
+          }
           setQuoteFee(BigInt(msgFee.nativeFee))
           currentQuoteFee = BigInt(msgFee.nativeFee)
         } catch (quoteError) {
@@ -119,7 +148,7 @@ export function useEvmToSolana() {
       }
 
       writeContract({
-        address: oftAddress,
+        address: selectedOftAddress,
         abi: myOftMockAbi,
         functionName: 'send',
         args: [sendParam, messagingFee, address as `0x${string}`],
@@ -128,7 +157,7 @@ export function useEvmToSolana() {
     } catch (error) {
       handleError(error, 'Failed to send tokens')
     }
-  }, [amount, recipientAddress, quoteFee, writeContract, address, evmBase, handleError])
+  }, [amount, recipientAddress, quoteFee, writeContract, address, evmBase, handleError, isCorrectNetwork, rpcUrl, selectedOftAddress])
 
   // Format quote fee for display
   const formattedQuoteFee = quoteFee ? formatEther(quoteFee) : null

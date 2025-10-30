@@ -2,12 +2,13 @@ import { useSolanaToEvm } from '../../../hooks/useSolanaToEvm'
 import { MessageStatusDisplay } from '../../MessageStatusDisplay'
 import { FilePathDisplay } from '../../FilePathDisplay'
 
-export default function SolanaToEvmCard() {
+export default function SolanaToEvmCard({ networkName: overrideNetworkName, toEidOverride, oftStoreOverride }: { networkName?: string; toEidOverride?: number; oftStoreOverride?: string }) {
   const {
     isClient,
     wallet,
     chainId,
     getNetworkName,
+    toEid,
     amount,
     setAmount,
     recipientAddress,
@@ -17,13 +18,17 @@ export default function SolanaToEvmCard() {
     sendState,
     onClickQuote,
     onClickSend,
-  } = useSolanaToEvm()
+  } = useSolanaToEvm(toEidOverride, oftStoreOverride)
 
   if (!isClient) return null; // Prevent rendering mismatched content
 
   return (
     <div className="space-y-4 mb-6">
       <FilePathDisplay text="/vite/src/components/send/solana/SolanaToEvmCard.tsx" />
+      {/* Destination EID used for sending from Solana */}
+      <div className="text-xs text-layerzero-gray-500">
+        Destination EID: <span className="text-layerzero-white">{toEid}</span>
+      </div>
       <div className="space-y-3">
         <div>
           <label className="block text-sm font-medium text-layerzero-white mb-2">
@@ -43,7 +48,7 @@ export default function SolanaToEvmCard() {
 
         <div>
           <label className="block text-sm font-medium text-layerzero-white mb-2">
-            Recipient Address ({getNetworkName(chainId)})
+            Recipient Address ({overrideNetworkName || getNetworkName(chainId)})
           </label>
           <input
             type="text"

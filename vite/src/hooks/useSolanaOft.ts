@@ -13,6 +13,9 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { AnchorProvider, Program } from "@coral-xyz/anchor";
+import { publicKey } from "@metaplex-foundation/umi";
+import { oft } from "@layerzerolabs/oft-v2-solana-sdk";
+import { umi } from "../config/umi";
 import oftIdl from "../vm-artifacts/solana/idl/oft.json";
 import type Oft from "../vm-artifacts/solana/idl/oft.json";
 
@@ -34,7 +37,7 @@ interface AnchorError {
 }
 
 // Custom hook for Solana OFT logic
-export function useSolanaOft() {
+export function useSolanaOft(storeAddressOverride?: string) {
   const solanaBase = useSolanaBase();
   const { wallet, walletReady, error, handleError, clearError } = solanaBase;
   const { connection } = useConnection();
@@ -47,8 +50,36 @@ export function useSolanaOft() {
   });
 
   // Use utility hooks
-  const contractValues = useStableSolanaContractsWeb3();
-  const { isMintTokenInstructionAvailable, isChecking, checkMintTokenExists } = useCheckFreeMintInstructionExists();
+  const stableContracts = useStableSolanaContractsWeb3();
+
+  // Allow override of oftStore -> derive tokenMint and programId from account
+  const [overrideContracts, setOverrideContracts] = useState<{
+    tokenMint: PublicKey | null;
+    programId: PublicKey | null;
+    oftStore: PublicKey | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const deriveFromStore = async () => {
+      if (!storeAddressOverride || !storeAddressOverride.trim()) {
+        setOverrideContracts(null);
+        return;
+      }
+      try {
+        const storePk = publicKey(storeAddressOverride.trim());
+        const storeInfo = await oft.accounts.fetchOFTStore(umi, storePk);
+        const mintPk = new PublicKey(storeInfo.tokenMint);
+        const programPk = new PublicKey(storeInfo.header.owner);
+        setOverrideContracts({ tokenMint: mintPk, programId: programPk, oftStore: new PublicKey(storePk) });
+      } catch (e) {
+        setOverrideContracts(null);
+      }
+    };
+    void deriveFromStore();
+  }, [storeAddressOverride]);
+
+  const contractValues = overrideContracts ?? stableContracts;
+  const { isMintTokenInstructionAvailable, isChecking, checkMintTokenExists } = useCheckFreeMintInstructionExists(contractValues);
 
   // ------------------------------------------------------------
   // Anchor helpers

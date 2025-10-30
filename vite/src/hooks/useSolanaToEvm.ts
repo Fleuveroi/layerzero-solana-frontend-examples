@@ -1,5 +1,8 @@
 import { useChainId, useAccount } from "wagmi";
 import { useState, useEffect, useCallback } from "react";
+import { oft } from "@layerzerolabs/oft-v2-solana-sdk";
+import { publicKey } from "@metaplex-foundation/umi";
+import { umi } from "../config/umi";
 
 // Import utilities
 import {
@@ -8,6 +11,7 @@ import {
   getNetworkName,
   useMultipleLoadingStates,
   useStableSolanaContracts,
+  type SolanaContracts,
   getSolanaOftQuote,
   sendSolanaOftTransaction,
   processSolanaLayerZeroError,
@@ -20,7 +24,7 @@ interface SendState {
   error: string | null;
 }
 
-export function useSolanaToEvm() {
+export function useSolanaToEvm(overrideToEid?: number, storeAddressOverride?: string) {
   const solanaBase = useSolanaBase();
   const { wallet, walletReady } = solanaBase;
   const chainId = useChainId();
@@ -28,8 +32,36 @@ export function useSolanaToEvm() {
 
   // Use utility hooks
   const umiWithWallet = useUmiWithWallet();
-  const toEid = useEndpointId(chainId);
-  const contractValues = useStableSolanaContracts();
+  const computedEid = useEndpointId(chainId);
+  const toEid = typeof overrideToEid === 'number' && Number.isFinite(overrideToEid) ? overrideToEid : computedEid;
+  const stableContracts = useStableSolanaContracts();
+  const [overrideContracts, setOverrideContracts] = useState<SolanaContracts | null>(null);
+
+  // Derive contract values from an override OFT Store if provided
+  useEffect(() => {
+    const derive = async () => {
+      if (!storeAddressOverride || !storeAddressOverride.trim()) {
+        setOverrideContracts(null);
+        return;
+      }
+      try {
+        const storePk = publicKey(storeAddressOverride.trim());
+        const storeInfo = await oft.accounts.fetchOFTStore(umi, storePk);
+        // Build UMI PublicKeys for mint/store/program
+        const derived: SolanaContracts = {
+          mint: publicKey(storeInfo.tokenMint),
+          storePda: storePk,
+          programId: publicKey(storeInfo.header.owner),
+        };
+        setOverrideContracts(derived);
+      } catch {
+        setOverrideContracts(null);
+      }
+    };
+    void derive();
+  }, [storeAddressOverride]);
+
+  const contractValues = overrideContracts ?? stableContracts;
   const { isLoading: isQuoting, withLoading } = useMultipleLoadingStates();
 
   const [isClient, setIsClient] = useState(false);
@@ -118,7 +150,7 @@ export function useSolanaToEvm() {
         console.log("No quote available. Getting quote automatically...");
         
         const result = await withLoading('quote', async () => {
-          console.log("Using EndpointId:", toEid, "for chainId:", chainId);
+      console.log("Using EndpointId:", toEid, "for chainId:", chainId);
           console.log("Destination address:", recipientAddress);
 
           return await getSolanaOftQuote({

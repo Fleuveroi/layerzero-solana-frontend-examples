@@ -1,7 +1,7 @@
 import { useSolanaOft } from "../../../hooks/useSolanaOft";
 import { FilePathDisplay } from "../../FilePathDisplay";
 
-export default function SolanaMintCard() {
+export default function SolanaMintCard({ storeAddressOverride, canMint = true }: { storeAddressOverride?: string; canMint?: boolean }) {
   const {
     wallet,
     balance,
@@ -15,7 +15,7 @@ export default function SolanaMintCard() {
     isMintTokenInstructionAvailable,
     isChecking,
     checkMintTokenExists,
-  } = useSolanaOft();
+  } = useSolanaOft(storeAddressOverride);
 
   // ------------------------------------------------------------
   // UI
@@ -88,26 +88,31 @@ export default function SolanaMintCard() {
               </div>
             </div>
 
-            {/* Mint functionality - Only when wallet connected */}
-            <div className="space-y-2">
-              <button
-                onClick={handleMint}
-                disabled={isMinting || isMintTokenInstructionAvailable === false}
-                className="w-full lz-button disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isMinting 
-                  ? "Minting 1 OFT token..." 
-                  : isMintTokenInstructionAvailable === false
-                  ? "Mint function not available"
-                  : "Mint 1 OFT token"}
-              </button>
+            {/* Mint functionality - Only when wallet connected and minting enabled */}
+            {canMint && (
+              <div className="space-y-2">
+                <button
+                  onClick={handleMint}
+                  disabled={isMinting || !isMintTokenInstructionAvailable }
+                  className="w-full lz-button disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isMinting 
+                    ? "Minting 1 OFT token..." 
+                    : isMintTokenInstructionAvailable === false
+                    ? "Mint function not available"
+                    : "Mint 1 OFT token"}
+                </button>
 
-              <p className="text-xs text-layerzero-gray-500 text-center">
-                {isMintTokenInstructionAvailable === false
-                  ? "The mintToken method is not supported by this program"
-                  : "Using the OFT Program's mock mint function (public)"}
-              </p>
-            </div>
+                <p className="text-xs text-layerzero-gray-500 text-center">
+                  {isMintTokenInstructionAvailable === false
+                    ? "The mintToken method is not supported by this program"
+                    : "Using the OFT Program's mock mint function (public)"}
+                </p>
+                <p className="text-xs text-layerzero-gray-500 text-center">
+                  Transaction simulation on Devnet for Phantom wallet can be inconsistent. You might be warned about the transaction potentially failing. Just proceed with the transaction, and it should work.
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>

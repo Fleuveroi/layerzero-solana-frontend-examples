@@ -2,8 +2,17 @@ import { optimismSepolia } from 'wagmi/chains'
 import { CONTRACTS } from '../../../config/contracts'
 import { FilePathDisplay } from '../../FilePathDisplay'
 
-export default function EvmOftCard() {
-  const SEPOLIA_OFT_ADDRESS = CONTRACTS.SEPOLIA_OFT_ADDRESS as `0x${string}`
+type Props = {
+  networkName: string
+  chainId?: number
+  oftAddressOverride?: `0x${string}` | string
+}
+
+export default function EvmOftCard({ networkName, chainId, oftAddressOverride }: Props) {
+  const SEPOLIA_OFT_ADDRESS = (typeof oftAddressOverride === 'string' && oftAddressOverride.startsWith('0x') && oftAddressOverride.length === 42
+    ? oftAddressOverride
+    : CONTRACTS.SEPOLIA_OFT_ADDRESS) as `0x${string}`
+  const displayChainId = typeof chainId === 'number' && Number.isFinite(chainId) ? chainId : optimismSepolia.id
 
   return (
     <div className="space-y-4">
@@ -27,7 +36,7 @@ export default function EvmOftCard() {
                 <span className="font-medium">Network:</span>
               </p>
               <p className="text-xs text-layerzero-white">
-                OP Sepolia Testnet (Chain ID: {optimismSepolia.id})
+                {networkName} (Chain ID: {displayChainId})
               </p>
             </div>
             <div>

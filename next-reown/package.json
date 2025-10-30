@@ -9,14 +9,16 @@
     "lint": "next lint"
   },
   "overrides": {
-    "@solana/web3.js": "^1.98.0"
+    "@solana/web3.js": "^1.98.0",
+    "@solana/wallet-adapter-base": "^0.9.23"
   },
   "resolutions": {
     "@solana/web3.js": "^1.98.0"
   },
   "pnpm": {
     "overrides": {
-      "@solana/web3.js": "^1.98.0"
+      "@solana/web3.js": "^1.98.0",
+      "@solana/wallet-adapter-base": "^0.9.23"
     }
   },
   "dependencies": {
@@ -30,7 +32,6 @@
     "@reown/appkit": "1.6.5",
     "@reown/appkit-adapter-solana": "1.6.5",
     "@reown/appkit-adapter-wagmi": "1.6.5",
-    "@solana/wallet-adapter-wallets": "^0.19.32",
     "@solana/web3.js": "^1.98.0",
     "@tanstack/react-query": "5.62.8",
     "next": "15.1.3",

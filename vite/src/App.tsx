@@ -1,19 +1,51 @@
 import { SolanaToEvmCard, EvmToSolanaCard } from "./components/send";
 import { SolanaOftCard, EvmOftCard } from "./components/oft";
-import { SolanaMintCard, EvmMintCard } from "./components/mint";
+import SolanaMintCard from "./components/mint/solana/SolanaMintCard";
+import EvmMintCard from "./components/mint/evm/EvmMintCard";
 import { 
   SolanaWalletProvider, 
   SolanaConnect, 
   EthereumConnect, 
   WagmiProviderWrapper 
 } from "./components/wallet";
+import { ConfigureSection } from "./components/configure";
 import { useEvmBase } from "./hooks/utils/useEvmBase";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { fetchMetadata } from './utils';
+import { getFirstHttpsRpc } from './utils/metadata';
+
+type MetadataDeployment = { eid?: string | number; version?: number | string };
+type MetadataEntry = {
+  chainDetails?: {
+    chainType?: string;
+    environment?: string;
+    shortName?: string;
+    nativeChainId?: number | string;
+  };
+  chainName?: string;
+  environment?: string;
+  deployments?: MetadataDeployment[];
+};
+type NetworkOption = { eid: number; chainName: string; chainKey: string; environment: string; shortName: string; nativeChainId?: number };
 
 function AppContent() {
   const [showSwitchSuccess, setShowSwitchSuccess] = useState(false);
   const [networkSwitchCount, setNetworkSwitchCount] = useState(0);
   const [chainChangedFlag, setChainChangedFlag] = useState(0);
+  
+  // Configure section inputs
+  const [oftStoreAddress, setOftStoreAddress] = useState('');
+  const [evmOftAddress, setEvmOftAddress] = useState('');
+  const [metadataNetworks, setMetadataNetworks] = useState<NetworkOption[]>([]);
+  const [networkQuery, setNetworkQuery] = useState('');
+  const [debouncedNetworkQuery, setDebouncedNetworkQuery] = useState('');
+  const [selectedNetwork, setSelectedNetwork] = useState<NetworkOption>();
+  const [selectedNetworkRpc, setSelectedNetworkRpc] = useState<string>();
+  const [metadataJson, setMetadataJson] = useState<Record<string, unknown>>();
+  const initializedFromUrlRef = useRef(false);
+  
+  // Mode: choose between default OFTs and user-input addresses
+  const [mode, setMode] = useState<'DEFAULT_OFTS' | 'USER_INPUT_OFTS'>('USER_INPUT_OFTS');
 
   // Use useEvmBase for all EVM network logic
   const {
@@ -22,6 +54,9 @@ function AppContent() {
     singleSupportedNetwork,
     handleSwitchNetwork,
   } = useEvmBase();
+
+  // Display name prefers selected testnet shortName over detected chain name
+  const evmDisplayName = selectedNetwork?.shortName || networkName;
 
   // Listen for chainChanged event to force re-render
   useEffect(() => {
@@ -32,6 +67,124 @@ function AppContent() {
       window.ethereum.removeListener('chainChanged', handler);
     };
   }, []);
+
+  // Debounce network query to avoid collapsing datalist during fast typing
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedNetworkQuery(networkQuery), 250);
+    return () => clearTimeout(handle);
+  }, [networkQuery]);
+
+  // Initialize Configure inputs from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pStore = params.get('oftStore') || '';
+    const pNetwork = params.get('network') || '';
+    const pEvmOft = params.get('evmOft') || '';
+    if (pStore) setOftStoreAddress(pStore);
+    if (pNetwork) setNetworkQuery(pNetwork);
+    if (pEvmOft) setEvmOftAddress(pEvmOft);
+  }, []);
+
+  // Initialize selected network from URL (eid/network) once after metadata loads
+  useEffect(() => {
+    if (initializedFromUrlRef.current) return;
+    if (metadataNetworks.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const pEid = params.get('eid');
+    const pNetwork = params.get('network');
+    let match: NetworkOption | undefined;
+
+    // Prefer selecting by explicit EID if it's provided in the URL
+    if (pEid) {
+      const eidNum = Number(pEid);
+      if (Number.isFinite(eidNum)) {
+        match = metadataNetworks.find((n) => n.eid === eidNum);
+      }
+    }
+    // Fallback: if no match from EID (invalid/unknown) OR no EID provided,
+    // try selecting by shortName from the URL instead
+    if (!match && pNetwork) {
+      match = metadataNetworks.find((n) => n.shortName === pNetwork);
+    }
+    if (match) {
+      setSelectedNetwork(match);
+      setNetworkQuery(match.shortName);
+    }
+    initializedFromUrlRef.current = true;
+  }, [metadataNetworks]);
+
+  // Persist Configure inputs to URL params (debounced network)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (oftStoreAddress) params.set('oftStore', oftStoreAddress); else params.delete('oftStore');
+    if (selectedNetwork?.eid) params.set('eid', String(selectedNetwork.eid)); else params.delete('eid');
+    if (debouncedNetworkQuery) params.set('network', debouncedNetworkQuery); else params.delete('network');
+    if (evmOftAddress) params.set('evmOft', evmOftAddress); else params.delete('evmOft');
+    if (selectedNetworkRpc) params.set('evmRpc', selectedNetworkRpc); else params.delete('evmRpc');
+    const qs = params.toString();
+    const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`;
+    window.history.replaceState({}, '', newUrl);
+  }, [oftStoreAddress, selectedNetwork, debouncedNetworkQuery, evmOftAddress, selectedNetworkRpc]);
+
+  // Fetch LayerZero metadata and build EVM network options
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetchMetadata();
+        // Convert the metadata object into [chainKey, entry] tuples for iteration
+        const entries = Object.entries(data ?? {}) as Array<[string, MetadataEntry]>;
+        const list: NetworkOption[] = [];
+        // Walk all chains in metadata and select only EVM testnets with a valid EID
+        for (const [chainKey, v] of entries) {
+          // Keep only EVM chains on testnet
+          const chainType = v?.chainDetails?.chainType;
+          const environment = v?.environment ?? v?.chainDetails?.environment ?? '';
+          if (chainType !== 'evm') continue;
+          if ((environment || '').toLowerCase() !== 'testnet') continue;
+          // Prefer a v2 deployment if present; otherwise take the first deployment
+          const deployments: MetadataDeployment[] = Array.isArray(v?.deployments) ? v.deployments : [];
+          if (!deployments.length) continue;
+          const v2 = (deployments.find((d) => Number(d?.version) === 2) || deployments[0]);
+          // Parse core identifiers and display names
+          const eidNum = Number(v2?.eid);
+          const chainName = v?.chainName || chainKey;
+          const shortName = v?.chainDetails?.shortName || chainName;
+          // Normalize native chain ID to a number if provided as string
+          const nativeChainIdRaw = v?.chainDetails?.nativeChainId;
+          const nativeChainId = typeof nativeChainIdRaw === 'number' ? nativeChainIdRaw : Number(nativeChainIdRaw);
+          if (Number.isFinite(eidNum)) {
+            // Include only entries with a valid EID; omit invalid nativeChainId values
+            list.push({ eid: eidNum, chainName, chainKey, environment, shortName, nativeChainId: Number.isFinite(nativeChainId) ? nativeChainId : undefined });
+          }
+        }
+        // Sort alphabetically by chain name
+        list.sort((a, b) => a.shortName.localeCompare(b.shortName));
+        setMetadataNetworks(list);
+        setMetadataJson(data as Record<string, unknown>);
+      } catch {
+        // Fail silently; users can still manually input an EID
+      }
+    })();
+  }, []);
+
+  // Derive selected network RPC when selection or metadata changes
+  useEffect(() => {
+    if (!selectedNetwork || !metadataJson) {
+      setSelectedNetworkRpc(undefined);
+      return;
+    }
+    const entry = metadataJson[selectedNetwork.chainKey];
+    const rpc = getFirstHttpsRpc(entry);
+    if (!rpc) {
+      console.warn('[metadata] No valid RPC found in metadata entry:', entry);
+    } else {
+      setSelectedNetworkRpc(rpc);
+    }
+  }, [selectedNetwork, metadataJson]);
+
+  const canMint = mode !== 'USER_INPUT_OFTS';
+
   return (
     <div className="min-h-screen bg-layerzero-black lz-grid-bg">
       {/* Hidden element to use chainChangedFlag and force re-render */}
@@ -99,13 +252,28 @@ function AppContent() {
                 {" "}Token Transfers using LayerZero
               </h2>
               <p className="text-layerzero-gray-400 text-lg mb-4 max-w-2xl">
-                Demo application showcasing seamless token transfers between <span className="font-semi text-layerzero-white">{networkName}</span> and <span className="font-semi text-layerzero-white">Solana</span> using LayerZero's <a href="https://docs.layerzero.network/v2/concepts/glossary#oft-omnichain-fungible-token" target="_blank" rel="noopener noreferrer" className="font-semi text-layerzero-white hover:text-layerzero-purple-400 underline">OFT</a> standard.
+                Demo application showcasing seamless token transfers between <span className="font-semi text-layerzero-white">{evmDisplayName}</span> and <span className="font-semi text-layerzero-white">Solana</span> using LayerZero's <a href="https://docs.layerzero.network/v2/concepts/glossary#oft-omnichain-fungible-token" target="_blank" rel="noopener noreferrer" className="font-semi text-layerzero-white hover:text-layerzero-purple-400 underline">OFT</a> standard.
               </p>
               <div className="lz-protocol-text">
                 /// Demo Only. Not for Production Use.
               </div>
             </div>
           </div>
+
+        {/* Section 00: Configure */}
+        <ConfigureSection
+          mode={mode}
+          setMode={setMode}
+          oftStoreAddress={oftStoreAddress}
+          setOftStoreAddress={setOftStoreAddress}
+          evmOftAddress={evmOftAddress}
+          setEvmOftAddress={setEvmOftAddress}
+          networkQuery={networkQuery}
+          setNetworkQuery={setNetworkQuery}
+          metadataNetworks={metadataNetworks}
+          selectedNetwork={selectedNetwork}
+          setSelectedNetwork={(v) => setSelectedNetwork(v)}
+        />
 
           {/* Section 01: Token Information */}
           <div className="lz-section">
@@ -123,19 +291,19 @@ function AppContent() {
                     View OFT token details on Solana and your balance
                   </p>
                 </div>
-                <SolanaOftCard />
+                <SolanaOftCard storeAddressOverride={oftStoreAddress} />
               </div>
               
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    {networkName} OFT
+                    {evmDisplayName} OFT
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    View OFT token details on {networkName} and your balance
+                    View OFT token details on {evmDisplayName} and your balance
                   </p>
                 </div>
-                <EvmOftCard />
+                <EvmOftCard networkName={evmDisplayName} chainId={selectedNetwork?.nativeChainId} oftAddressOverride={evmOftAddress} />
               </div>
             </div>
           </div>
@@ -162,46 +330,46 @@ function AppContent() {
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    {networkName} Network
+                    {evmDisplayName} Network
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    Connect your {networkName} wallet to interact with ERC-20 tokens
+                    Connect your {evmDisplayName} wallet to interact with ERC-20 tokens
                   </p>
                 </div>
-                <EthereumConnect networkName={networkName} isWrongNetwork={isWrongNetwork} />
+                <EthereumConnect networkName={evmDisplayName} isWrongNetwork={isWrongNetwork} />
               </div>
             </div>
           </div>
 
-          {/* Section 03: Mint OFT */}
+          {/* Section 03: Mint OFT / OFT Balances */}
           <div className="lz-section">
             <div className="lz-section-title">
               <div className="lz-section-number">03 /</div>
-              <h3>Mint OFT</h3>
+              <h3>{mode === 'USER_INPUT_OFTS' ? 'OFT Balances' : 'Mint OFT'}</h3>
             </div>
             <div className="grid lg:grid-cols-2 gap-8">
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    Solana Mint
+                    Solana
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    View your balance and mint OFT tokens on Solana
+                    View your balance{canMint ? ' and mint OFT tokens' : ''} on Solana
                   </p>
                 </div>
-                <SolanaMintCard />
+                <SolanaMintCard storeAddressOverride={oftStoreAddress} canMint={canMint} />
               </div>
               
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    {networkName} Mint
+                    {evmDisplayName}
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    View your balance and mint OFT tokens on {networkName}
+                    View your balance{canMint ? ' and mint OFT tokens' : ''} on {evmDisplayName}
                   </p>
                 </div>
-                <EvmMintCard networkName={networkName} isWrongNetwork={isWrongNetwork} />
+                <EvmMintCard networkName={evmDisplayName} isWrongNetwork={isWrongNetwork} canMint={canMint} oftAddressOverride={evmOftAddress} rpcUrl={selectedNetworkRpc || undefined} />
               </div>
             </div>
           </div>
@@ -216,25 +384,25 @@ function AppContent() {
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    Solana → {networkName}
+                    Solana → {evmDisplayName}
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    Transfer tokens from Solana to {networkName} network
+                    Transfer tokens from Solana to {evmDisplayName} network
                   </p>
                 </div>
-                <SolanaToEvmCard />
+                <SolanaToEvmCard networkName={evmDisplayName} toEidOverride={selectedNetwork?.eid} oftStoreOverride={oftStoreAddress} />
               </div>
               
               <div className="lz-card">
                 <div className="mb-6">
                   <h4 className="text-lg font-medium text-layerzero-white mb-2">
-                    {networkName} → Solana
+                    {evmDisplayName} → Solana
                   </h4>
                   <p className="text-layerzero-gray-500 text-sm">
-                    Transfer tokens from {networkName} to Solana network
+                    Transfer tokens from {evmDisplayName} to Solana network
                   </p>
                 </div>
-                <EvmToSolanaCard networkName={networkName} isWrongNetwork={isWrongNetwork}  />
+                <EvmToSolanaCard networkName={evmDisplayName} isWrongNetwork={isWrongNetwork} oftAddressOverride={evmOftAddress} rpcUrl={selectedNetworkRpc || undefined} />
               </div>
             </div>
           </div>
